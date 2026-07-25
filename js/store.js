@@ -89,6 +89,24 @@ const Store = (() => {
     return { tdee: Math.round(tdee), calories, proteinG, fatG, carbG: Math.max(carbG, 0) };
   }
 
+  // プロフィール(性別・年齢・摂取カロリー)から各栄養素の目標値を概算する。
+  // 日本人の食事摂取基準・WHO推奨等を参考にしたおおよその値であり、厳密な個別診断ではない。
+  function computeNutrientTargets(settings, calories) {
+    const cal = calories || settings.targetCalories || 2200;
+    const isFemale = settings.sex === "female";
+    const age = settings.age || 30;
+    const premenopausal = isFemale && age < 50;
+    return {
+      fiberG: Math.round((cal / 1000) * 14), // 目安: 1000kcalあたり14g
+      sugarG: Math.round((cal * 0.1) / 4), // 目安: エネルギーの10%以内(WHO)
+      sodiumMg: isFemale ? 2600 : 2950, // 塩分相当 女性6.5g/男性7.5g未満に相当
+      calciumMg: isFemale ? 650 : 800,
+      ironMg: premenopausal ? 10.5 : isFemale ? 6.5 : 7.5,
+      potassiumMg: isFemale ? 2600 : 3000,
+      vitaminCMg: 100,
+    };
+  }
+
   // ---- body metrics ----
   async function upsertBodyMetric(date, patch) {
     const existing = (await DB.get("bodyMetrics", date)) || { date };
@@ -154,6 +172,7 @@ const Store = (() => {
     getSettings,
     saveSettings,
     computeAutoTargets,
+    computeNutrientTargets,
     upsertBodyMetric,
     getBodyMetricsRange,
     getLatestBodyMetric,

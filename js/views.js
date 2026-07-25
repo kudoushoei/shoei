@@ -477,6 +477,7 @@ Views.settings = {
     const latest = await Store.getLatestBodyMetric();
     const auto = settings.useAutoTargets;
     const suggestion = auto ? await Store.computeAutoTargets(settings, latest?.weightKg) : null;
+    const nutrientSuggestions = Store.computeNutrientTargets(settings, suggestion?.calories ?? settings.targetCalories);
 
     root.innerHTML = `
       <div class="section-title">プロフィール</div>
@@ -563,11 +564,11 @@ Views.settings = {
 
       <div class="section-title">追跡する栄養素</div>
       <div class="card">
-        <div class="helptext" style="margin-bottom:10px;">カロリー・P/F/C以外に気にしたい項目を選ぶと、食事タブに進捗と不足表示が追加されます。</div>
+        <div class="helptext" style="margin-bottom:10px;">カロリー・P/F/C以外に気にしたい項目を選ぶと、食事タブに進捗と不足表示が追加されます。目標値は性別・年齢・摂取カロリーから自動で見積もった目安値です（編集して保存すると上書きされます）。</div>
         <form id="nutrients-form">
           ${NUTRIENT_CATALOG.map((n) => {
             const isSelected = (settings.selectedNutrients || []).includes(n.key);
-            const targetVal = settings.extraTargets?.[n.key] ?? n.defaultTarget;
+            const targetVal = settings.extraTargets?.[n.key] ?? nutrientSuggestions[n.key] ?? n.defaultTarget;
             return `
             <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:0.5px solid var(--border);">
               <label style="display:flex; align-items:center; gap:8px; flex:1; font-size:14px;">
