@@ -1,7 +1,7 @@
 // Google Gemini APIを使い、食事の写真から栄養価を推定する。
 // APIキーはユーザー自身のものをブラウザ内(IndexedDB)にのみ保存し、Google以外には送信しない。
 const Gemini = (() => {
-  const MODEL = "gemini-2.0-flash";
+  const MODEL = "gemini-3-flash-preview";
 
   const RESPONSE_SCHEMA = {
     type: "OBJECT",

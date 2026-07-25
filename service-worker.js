@@ -1,4 +1,4 @@
-const CACHE_NAME = "body-tracker-v4";
+const CACHE_NAME = "body-tracker-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
