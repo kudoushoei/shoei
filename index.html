@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>体づくりログ</title>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f6e56">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="体づくりログ">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1 id="header-title">ダッシュボード</h1>
+</header>
+
+<main id="view-root" class="view-root"></main>
+
+<nav class="tab-bar" id="tab-bar">
+  <button class="tab-btn" data-view="dashboard" aria-label="ダッシュボード">
+    <svg viewBox="0 0 24 24"><path d="M3 13h4v8H3zM10 3h4v18h-4zM17 8h4v13h-4z"/></svg>
+    <span>ホーム</span>
+  </button>
+  <button class="tab-btn" data-view="body" aria-label="体組成">
+    <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 110 6 3 3 0 010-6zm0 8c3 0 6 1.5 6 4v8H6v-8c0-2.5 3-4 6-4z"/></svg>
+    <span>体組成</span>
+  </button>
+  <button class="tab-btn" data-view="diet" aria-label="食事">
+    <svg viewBox="0 0 24 24"><path d="M5 2v9a3 3 0 003 3v8h2v-8a3 3 0 003-3V2H11v8H9V2H7v8H5V2zm12 0c-2 0-4 2.5-4 6s1 6 3 6.5V22h2V2z"/></svg>
+    <span>食事</span>
+  </button>
+  <button class="tab-btn" data-view="import" aria-label="データ取込">
+    <svg viewBox="0 0 24 24"><path d="M12 2l5 5h-3v7h-4V7H7l5-5zM4 20v-4h2v2h12v-2h2v4H4z"/></svg>
+    <span>取込</span>
+  </button>
+  <button class="tab-btn" data-view="settings" aria-label="設定">
+    <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 110 8 4 4 0 010-8zm8.9 2.5l1.6-1.2-2-3.4-1.9.7a7.6 7.6 0 00-1.7-1l-.3-2h-4l-.3 2a7.6 7.6 0 00-1.7 1l-1.9-.7-2 3.4 1.6 1.2a7.9 7.9 0 000 2l-1.6 1.2 2 3.4 1.9-.7c.5.4 1.1.7 1.7 1l.3 2h4l.3-2c.6-.3 1.2-.6 1.7-1l1.9.7 2-3.4-1.6-1.2c.1-.7.1-1.4 0-2z"/></svg>
+    <span>設定</span>
+  </button>
+</nav>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/db.js"></script>
+<script src="js/store.js"></script>
+<script src="js/healthImport.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/views.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

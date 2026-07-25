@@ -1,0 +1,150 @@
+// 画面から使う高レベルAPI。日付は常に "YYYY-MM-DD" のローカル日付文字列で扱う。
+const Store = (() => {
+  function todayStr() {
+    return toDateStr(new Date());
+  }
+  function toDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  function addDays(dateStr, n) {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return toDateStr(d);
+  }
+  function lastNDates(n, endDateStr) {
+    const end = endDateStr || todayStr();
+    const arr = [];
+    for (let i = n - 1; i >= 0; i--) arr.push(addDays(end, -i));
+    return arr;
+  }
+
+  const DEFAULT_SETTINGS = {
+    heightCm: null,
+    age: null,
+    sex: "male",
+    activityLevel: "moderate",
+    goalType: "maintain",
+    targetWeightKg: null,
+    useAutoTargets: true,
+    targetCalories: 2200,
+    targetProteinG: 120,
+    targetFatG: 60,
+    targetCarbG: 250,
+  };
+
+  async function getSettings() {
+    const rows = await DB.getAll("settings");
+    const obj = { ...DEFAULT_SETTINGS };
+    rows.forEach((r) => (obj[r.key] = r.value));
+    return obj;
+  }
+
+  async function saveSettings(patch) {
+    const entries = Object.entries(patch);
+    for (const [key, value] of entries) {
+      await DB.put("settings", { key, value });
+    }
+  }
+
+  const ACTIVITY_FACTORS = {
+    sedentary: 1.2,
+    light: 1.375,
+    moderate: 1.55,
+    active: 1.725,
+    veryActive: 1.9,
+  };
+  const GOAL_ADJUST = { cut: -500, maintain: 0, bulk: 300 };
+
+  async function computeAutoTargets(settings, currentWeightKg) {
+    const weight = currentWeightKg || settings.targetWeightKg || 65;
+    if (!settings.heightCm || !settings.age) return null;
+    const bmr =
+      settings.sex === "female"
+        ? 10 * weight + 6.25 * settings.heightCm - 5 * settings.age - 161
+        : 10 * weight + 6.25 * settings.heightCm - 5 * settings.age + 5;
+    const tdee = bmr * (ACTIVITY_FACTORS[settings.activityLevel] || 1.55);
+    const calories = Math.round(tdee + (GOAL_ADJUST[settings.goalType] ?? 0));
+    const proteinG = Math.round(weight * 2.0);
+    const fatG = Math.round((calories * 0.25) / 9);
+    const carbG = Math.round((calories - proteinG * 4 - fatG * 9) / 4);
+    return { tdee: Math.round(tdee), calories, proteinG, fatG, carbG: Math.max(carbG, 0) };
+  }
+
+  // ---- body metrics ----
+  async function upsertBodyMetric(date, patch) {
+    const existing = (await DB.get("bodyMetrics", date)) || { date };
+    await DB.put("bodyMetrics", { ...existing, ...patch });
+  }
+  async function getBodyMetricsRange(days) {
+    const dates = new Set(lastNDates(days));
+    const all = await DB.getAll("bodyMetrics");
+    return all.filter((r) => dates.has(r.date)).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  async function getLatestBodyMetric() {
+    const all = await DB.getAll("bodyMetrics");
+    const withWeight = all.filter((r) => r.weightKg != null).sort((a, b) => (a.date < b.date ? 1 : -1));
+    return withWeight[0] || null;
+  }
+
+  // ---- activity ----
+  async function upsertActivity(date, patch) {
+    const existing = (await DB.get("activity", date)) || { date };
+    await DB.put("activity", { ...existing, ...patch });
+  }
+  async function getActivityRange(days) {
+    const dates = new Set(lastNDates(days));
+    const all = await DB.getAll("activity");
+    return all.filter((r) => dates.has(r.date)).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  async function getActivityForDate(date) {
+    return (await DB.get("activity", date)) || { date };
+  }
+
+  // ---- meals ----
+  async function addMeal(meal) {
+    return DB.put("meals", meal);
+  }
+  async function deleteMeal(id) {
+    return DB.delete("meals", id);
+  }
+  async function getMealsForDate(date) {
+    const range = IDBKeyRange.only(date);
+    const rows = await DB.getAllByIndex("meals", "byDate", range);
+    return rows.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  }
+  function sumMeals(meals) {
+    return meals.reduce(
+      (acc, m) => {
+        acc.calories += Number(m.calories) || 0;
+        acc.proteinG += Number(m.proteinG) || 0;
+        acc.fatG += Number(m.fatG) || 0;
+        acc.carbG += Number(m.carbG) || 0;
+        return acc;
+      },
+      { calories: 0, proteinG: 0, fatG: 0, carbG: 0 }
+    );
+  }
+
+  return {
+    todayStr,
+    toDateStr,
+    addDays,
+    lastNDates,
+    getSettings,
+    saveSettings,
+    computeAutoTargets,
+    upsertBodyMetric,
+    getBodyMetricsRange,
+    getLatestBodyMetric,
+    upsertActivity,
+    getActivityRange,
+    getActivityForDate,
+    addMeal,
+    deleteMeal,
+    getMealsForDate,
+    sumMeals,
+  };
+})();
