@@ -55,6 +55,11 @@ Views.dashboard = {
     const calTarget = settings.targetCalories;
     const calPct = calTarget ? Math.min(100, Math.round((totals.calories / calTarget) * 100)) : 0;
 
+    const burned = (todayActivity.activeEnergyKcal || 0) + (todayActivity.basalEnergyKcal || 0);
+    const hasBurnData = todayActivity.activeEnergyKcal != null && todayActivity.activeEnergyKcal > 0;
+    const netBalance = totals.calories - burned;
+    const goalLabel = { cut: "減量", maintain: "維持", bulk: "増量" }[settings.goalType] || "";
+
     let importTag;
     if (!settings.lastImportAt) {
       importTag = `<span class="tag warning">ヘルスケア未取込</span>`;
@@ -87,6 +92,17 @@ Views.dashboard = {
         <div class="stat-tile"><div class="label">消費カロリー</div><div class="value">${n0(todayActivity.activeEnergyKcal)}<span class="unit">kcal</span></div></div>
         <div class="stat-tile"><div class="label">睡眠</div><div class="value">${n1(todayActivity.sleepHours)}<span class="unit">h</span></div></div>
         <div class="stat-tile"><div class="label">摂取カロリー</div><div class="value">${n0(totals.calories)}<span class="unit">kcal</span></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">カロリー収支（目安）</div>
+        <div style="font-size:26px; font-weight:600; color:${netBalance <= 0 ? "var(--accent)" : "var(--warning)"};">
+          ${netBalance > 0 ? "+" : ""}${n0(netBalance)}<span style="font-size:13px; font-weight:400; color:var(--text-secondary)"> kcal</span>
+        </div>
+        <div class="helptext">
+          摂取 ${n0(totals.calories)} − 消費(活動+基礎代謝) ${n0(burned)} kcal${goalLabel ? `　現在の目標: ${goalLabel}` : ""}
+          ${hasBurnData ? "" : "<br>※消費データが少ないようです。ヘルスケアから取込むと歩数・消費カロリーが反映されます"}
+        </div>
       </div>
 
       <div class="card" id="diet-jump" style="margin-top:12px; cursor:pointer;">
@@ -227,14 +243,17 @@ Views.diet = {
     const totals = Store.sumMeals(meals);
     const isToday = dietDate === Store.todayStr();
 
-    function row(label, value, target, unit) {
+    const selectedExtra = NUTRIENT_CATALOG.filter((n) => (settings.selectedNutrients || []).includes(n.key));
+
+    function row(label, value, target, unit, direction = "max") {
       const pct = target ? Math.min(100, Math.round((value / target) * 100)) : 0;
-      const over = target && value > target;
+      const over = direction === "max" && target && value > target;
+      const deficient = direction === "min" && target && value < target;
       return `
         <div style="margin-bottom:10px;">
           <div style="display:flex; justify-content:space-between; font-size:13px;">
             <span style="color:var(--text-secondary)">${label}</span>
-            <span>${n0(value)} / ${target ? n0(target) : "--"} ${unit}</span>
+            <span>${n0(value)} / ${target ? n0(target) : "--"} ${unit}${deficient ? '<span class="tag warning" style="margin-left:6px;">不足</span>' : ""}</span>
           </div>
           <div class="progress-bar ${over ? "over" : ""}"><div style="width:${pct}%"></div></div>
         </div>`;
@@ -253,6 +272,16 @@ Views.diet = {
         ${row("タンパク質", totals.proteinG, settings.targetProteinG, "g")}
         ${row("脂質", totals.fatG, settings.targetFatG, "g")}
         ${row("炭水化物", totals.carbG, settings.targetCarbG, "g")}
+        ${selectedExtra.map((n) => row(n.label, totals[n.key], settings.extraTargets?.[n.key] ?? n.defaultTarget, n.unit, n.direction)).join("")}
+      </div>
+
+      <div class="section-title">写真から記録</div>
+      <div class="card">
+        <label class="btn btn-primary" style="display:block; text-align:center;">
+          カメラで撮影してAIに解析させる
+          <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;">
+        </label>
+        <div id="photo-status" class="helptext" style="margin-top:8px; display:none;"></div>
       </div>
 
       <div class="section-title">記録を追加</div>
@@ -268,6 +297,7 @@ Views.diet = {
             <div class="field"><label>F (g)</label><input type="number" name="fatG" step="0.1"></div>
             <div class="field"><label>C (g)</label><input type="number" name="carbG" step="0.1"></div>
           </div>
+          ${selectedExtra.map((n) => `<div class="field"><label>${n.label} (${n.unit})</label><input type="number" step="0.1" name="${n.key}"></div>`).join("")}
           <button class="btn btn-primary" type="submit">追加</button>
         </form>
       </div>
@@ -310,7 +340,7 @@ Views.diet = {
     root.querySelector("#meal-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      await Store.addMeal({
+      const meal = {
         date: dietDate,
         time: fd.get("time") || "",
         name: fd.get("name"),
@@ -318,9 +348,38 @@ Views.diet = {
         proteinG: parseFloat(fd.get("proteinG")) || 0,
         fatG: parseFloat(fd.get("fatG")) || 0,
         carbG: parseFloat(fd.get("carbG")) || 0,
+      };
+      selectedExtra.forEach((n) => {
+        meal[n.key] = parseFloat(fd.get(n.key)) || 0;
       });
+      await Store.addMeal(meal);
       Views.diet.render(root);
     });
+
+    root.querySelector("#photo-input").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const status = root.querySelector("#photo-status");
+      status.style.display = "block";
+      status.textContent = "AIが写真を解析中...";
+      try {
+        const result = await Gemini.estimateNutrition(file, settings.geminiApiKey);
+        const form = root.querySelector("#meal-form");
+        form.elements["name"].value = result.foodName || "";
+        form.elements["calories"].value = Math.round(result.calories || 0);
+        form.elements["proteinG"].value = Math.round((result.proteinG || 0) * 10) / 10;
+        form.elements["fatG"].value = Math.round((result.fatG || 0) * 10) / 10;
+        form.elements["carbG"].value = Math.round((result.carbG || 0) * 10) / 10;
+        selectedExtra.forEach((n) => {
+          if (form.elements[n.key]) form.elements[n.key].value = Math.round((result[n.key] || 0) * 10) / 10;
+        });
+        status.textContent = "解析結果をフォームに反映しました。内容を確認して「追加」を押してください。";
+        form.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (err) {
+        status.textContent = "解析に失敗しました: " + (err.message || String(err));
+      }
+    });
+
     root.querySelectorAll("[data-del]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         await Store.deleteMeal(Number(btn.dataset.del));
@@ -486,6 +545,44 @@ Views.settings = {
         </form>
       </div>
 
+      <div class="section-title">写真からの栄養推定 (AI)</div>
+      <div class="card">
+        <div class="helptext" style="margin-bottom:10px;">
+          食事タブで写真を撮ると、Gemini APIで栄養価を推定します。ご自身のAPIキーが必要です
+          （<a href="https://aistudio.google.com/" target="_blank" rel="noopener">Google AI Studio</a>
+          の「Get API key」から無料で発行できます）。キーはこの端末のブラウザ内にのみ保存され、Google以外には送信されません。
+        </div>
+        <form id="gemini-form">
+          <div class="field">
+            <label>Gemini APIキー</label>
+            <input type="password" name="geminiApiKey" value="${escapeHtml(settings.geminiApiKey || "")}" placeholder="AIza...">
+          </div>
+          <button class="btn btn-primary" type="submit">保存</button>
+        </form>
+      </div>
+
+      <div class="section-title">追跡する栄養素</div>
+      <div class="card">
+        <div class="helptext" style="margin-bottom:10px;">カロリー・P/F/C以外に気にしたい項目を選ぶと、食事タブに進捗と不足表示が追加されます。</div>
+        <form id="nutrients-form">
+          ${NUTRIENT_CATALOG.map((n) => {
+            const isSelected = (settings.selectedNutrients || []).includes(n.key);
+            const targetVal = settings.extraTargets?.[n.key] ?? n.defaultTarget;
+            return `
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:0.5px solid var(--border);">
+              <label style="display:flex; align-items:center; gap:8px; flex:1; font-size:14px;">
+                <input type="checkbox" name="nutrient" value="${n.key}" ${isSelected ? "checked" : ""}>
+                ${n.label}
+              </label>
+              <input type="number" step="0.1" name="target_${n.key}" value="${targetVal}" ${isSelected ? "" : "disabled"}
+                style="width:84px; border:0.5px solid var(--border); background:var(--surface-2); border-radius:8px; padding:6px 8px; font-size:14px; color:var(--text);">
+              <span style="font-size:12px; color:var(--text-muted); width:26px;">${n.unit}</span>
+            </div>`;
+          }).join("")}
+          <button class="btn btn-primary" type="submit" style="margin-top:12px;">保存</button>
+        </form>
+      </div>
+
       <div class="section-title">データ管理</div>
       <div class="card">
         <button class="btn" id="export-btn" style="margin-bottom:10px;">バックアップを書き出す (JSON)</button>
@@ -527,6 +624,34 @@ Views.settings = {
         targetCarbG: parseFloat(fd.get("targetCarbG")) || 0,
       });
       App.toast("目標を保存しました");
+      Views.settings.render(root);
+    });
+
+    root.querySelector("#gemini-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await Store.saveSettings({ geminiApiKey: (fd.get("geminiApiKey") || "").trim() });
+      App.toast("APIキーを保存しました");
+    });
+
+    root.querySelectorAll('#nutrients-form input[name="nutrient"]').forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const targetInput = root.querySelector(`input[name="target_${cb.value}"]`);
+        if (targetInput) targetInput.disabled = !cb.checked;
+      });
+    });
+
+    root.querySelector("#nutrients-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const selectedNutrients = fd.getAll("nutrient");
+      const extraTargets = { ...settings.extraTargets };
+      NUTRIENT_CATALOG.forEach((n) => {
+        const v = fd.get(`target_${n.key}`);
+        if (v) extraTargets[n.key] = parseFloat(v);
+      });
+      await Store.saveSettings({ selectedNutrients, extraTargets });
+      App.toast("保存しました");
       Views.settings.render(root);
     });
 

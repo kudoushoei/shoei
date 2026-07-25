@@ -1,3 +1,16 @@
+// 基本4項目(カロリー/P/F/C)に加えて、ユーザーが任意で追跡できる栄養素のカタログ。
+// defaultTargetは成人の目安値（一般的な栄養摂取基準を参考にしたおおよその値）で、設定画面で調整できる。
+// direction: "min" = 目標値以上を目指す(下回ると不足)、"max" = 目標値以下に抑えたい(超えると注意)
+const NUTRIENT_CATALOG = [
+  { key: "fiberG", label: "食物繊維", unit: "g", defaultTarget: 20, direction: "min" },
+  { key: "sugarG", label: "糖質(糖類)", unit: "g", defaultTarget: 50, direction: "max" },
+  { key: "sodiumMg", label: "ナトリウム(塩分相当)", unit: "mg", defaultTarget: 2000, direction: "max" },
+  { key: "calciumMg", label: "カルシウム", unit: "mg", defaultTarget: 650, direction: "min" },
+  { key: "ironMg", label: "鉄分", unit: "mg", defaultTarget: 7.5, direction: "min" },
+  { key: "potassiumMg", label: "カリウム", unit: "mg", defaultTarget: 2500, direction: "min" },
+  { key: "vitaminCMg", label: "ビタミンC", unit: "mg", defaultTarget: 100, direction: "min" },
+];
+
 // 画面から使う高レベルAPI。日付は常に "YYYY-MM-DD" のローカル日付文字列で扱う。
 const Store = (() => {
   function todayStr() {
@@ -33,6 +46,9 @@ const Store = (() => {
     targetProteinG: 120,
     targetFatG: 60,
     targetCarbG: 250,
+    geminiApiKey: "",
+    selectedNutrients: [],
+    extraTargets: {},
   };
 
   async function getSettings() {
@@ -116,16 +132,18 @@ const Store = (() => {
     return rows.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
   }
   function sumMeals(meals) {
-    return meals.reduce(
-      (acc, m) => {
-        acc.calories += Number(m.calories) || 0;
-        acc.proteinG += Number(m.proteinG) || 0;
-        acc.fatG += Number(m.fatG) || 0;
-        acc.carbG += Number(m.carbG) || 0;
-        return acc;
-      },
-      { calories: 0, proteinG: 0, fatG: 0, carbG: 0 }
-    );
+    const base = { calories: 0, proteinG: 0, fatG: 0, carbG: 0 };
+    NUTRIENT_CATALOG.forEach((n) => (base[n.key] = 0));
+    return meals.reduce((acc, m) => {
+      acc.calories += Number(m.calories) || 0;
+      acc.proteinG += Number(m.proteinG) || 0;
+      acc.fatG += Number(m.fatG) || 0;
+      acc.carbG += Number(m.carbG) || 0;
+      NUTRIENT_CATALOG.forEach((n) => {
+        acc[n.key] += Number(m[n.key]) || 0;
+      });
+      return acc;
+    }, base);
   }
 
   return {
