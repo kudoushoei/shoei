@@ -1,10 +1,11 @@
-const CACHE_NAME = "body-tracker-v1";
+const CACHE_NAME = "body-tracker-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./css/style.css",
   "./js/db.js",
   "./js/store.js",
+  "./js/zip.js",
   "./js/healthImport.js",
   "./js/charts.js",
   "./js/views.js",

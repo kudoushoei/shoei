@@ -70,7 +70,7 @@ Views.dashboard = {
           <span class="card-title" style="margin:0;">ヘルスケアデータ</span>
           ${importTag}
         </div>
-        <div class="helptext">タップして取込画面へ（zipはiPhoneのFilesアプリでその場で展開できます。PCへの転送は不要です）</div>
+        <div class="helptext">タップして取込画面へ（export.zipをそのまま選べます。展開もPCへの転送も不要です）</div>
       </div>
 
       <div class="card">
@@ -347,16 +347,15 @@ Views.import = {
           <li>右上のプロフィールアイコンをタップ</li>
           <li>一番下の「すべての健康データを書き出す」をタップ (export.zip が作られます)</li>
           <li>「”Files”に保存」を選び、iPhone内(このApp内 / iCloud Drive等)に保存する</li>
-          <li>Filesアプリでその <b>export.zip をタップして展開</b>し、中の <b>export.xml</b> を用意する（PCへの転送は不要です）</li>
-          <li>このページ（Safari）に戻り、下のボタンから export.xml を選ぶ</li>
+          <li>このページ（Safari）に戻り、下のボタンから <b>export.zip をそのまま</b>選ぶ（展開は不要、アプリ内で自動で展開します）</li>
         </ol>
-        <div class="helptext" style="margin-top:8px;">※PCで作業したい場合は、AirDropやメールでexport.zipをPCに送り、右クリック→「すべて展開」してもOKです。</div>
+        <div class="helptext" style="margin-top:8px;">※あらかじめ展開済みの export.xml や、PCに転送したファイルを選んでも構いません。</div>
       </div>
 
       <label class="import-drop" for="xml-input">
-        <div style="font-size:15px; color:var(--text); margin-bottom:4px;">export.xml を選択</div>
+        <div style="font-size:15px; color:var(--text); margin-bottom:4px;">export.zip / export.xml を選択</div>
         <div>タップしてファイルを選んでください</div>
-        <input type="file" id="xml-input" accept=".xml,text/xml">
+        <input type="file" id="xml-input" accept=".zip,.xml,application/zip,text/xml">
       </label>
 
       <div id="import-progress" hidden>
@@ -379,7 +378,14 @@ Views.import = {
       progressWrap.hidden = false;
       resultBox.innerHTML = "";
       try {
-        const parsed = await HealthImport.parseFile(file, (ratio) => {
+        let xmlFile = file;
+        const nameLooksZip = /\.zip$/i.test(file.name);
+        if (nameLooksZip || (await Zip.looksLikeZip(file))) {
+          status.textContent = "ZIPを展開中...";
+          bar.style.width = "0%";
+          xmlFile = await Zip.extractFirstMatch(file, (name) => /(^|\/)export\.xml$/i.test(name));
+        }
+        const parsed = await HealthImport.parseFile(xmlFile, (ratio) => {
           bar.style.width = Math.round(ratio * 100) + "%";
           status.textContent = `解析中... ${Math.round(ratio * 100)}%`;
         });
