@@ -14,6 +14,10 @@ function n0(v) {
 function n1(v) {
   return v == null ? "--" : (Math.round(v * 10) / 10).toString();
 }
+function daysSince(isoStr) {
+  const ms = Date.now() - new Date(isoStr).getTime();
+  return Math.floor(ms / 86400000);
+}
 
 // ===================== ダッシュボード =====================
 Views.dashboard = {
@@ -51,7 +55,24 @@ Views.dashboard = {
     const calTarget = settings.targetCalories;
     const calPct = calTarget ? Math.min(100, Math.round((totals.calories / calTarget) * 100)) : 0;
 
+    let importTag;
+    if (!settings.lastImportAt) {
+      importTag = `<span class="tag warning">ヘルスケア未取込</span>`;
+    } else {
+      const d = daysSince(settings.lastImportAt);
+      const label = d <= 0 ? "今日取込済み" : `最終取込: ${d}日前`;
+      importTag = `<span class="tag ${d >= 3 ? "warning" : ""}">${label}</span>`;
+    }
+
     root.innerHTML = `
+      <div class="card" id="import-jump" style="cursor:pointer;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="card-title" style="margin:0;">ヘルスケアデータ</span>
+          ${importTag}
+        </div>
+        <div class="helptext">タップして取込画面へ（zipはiPhoneのFilesアプリでその場で展開できます。PCへの転送は不要です）</div>
+      </div>
+
       <div class="card">
         <div class="card-title">体重</div>
         <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
@@ -80,6 +101,7 @@ Views.dashboard = {
     `;
 
     root.querySelector("#diet-jump").addEventListener("click", () => App.showView("diet"));
+    root.querySelector("#import-jump").addEventListener("click", () => App.showView("import"));
   },
 };
 
@@ -324,9 +346,11 @@ Views.import = {
           <li>iPhoneで「ヘルスケア」アプリを開く</li>
           <li>右上のプロフィールアイコンをタップ</li>
           <li>一番下の「すべての健康データを書き出す」をタップ (export.zip が作られます)</li>
-          <li>AirDropやiCloud Drive、メールなどでこのパソコンに送る</li>
-          <li>zipを右クリック→「すべて展開」し、中の <b>export.xml</b> を選ぶ</li>
+          <li>「”Files”に保存」を選び、iPhone内(このApp内 / iCloud Drive等)に保存する</li>
+          <li>Filesアプリでその <b>export.zip をタップして展開</b>し、中の <b>export.xml</b> を用意する（PCへの転送は不要です）</li>
+          <li>このページ（Safari）に戻り、下のボタンから export.xml を選ぶ</li>
         </ol>
+        <div class="helptext" style="margin-top:8px;">※PCで作業したい場合は、AirDropやメールでexport.zipをPCに送り、右クリック→「すべて展開」してもOKです。</div>
       </div>
 
       <label class="import-drop" for="xml-input">
