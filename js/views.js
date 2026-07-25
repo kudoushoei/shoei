@@ -355,7 +355,7 @@ Views.import = {
       <label class="import-drop" for="xml-input">
         <div style="font-size:15px; color:var(--text); margin-bottom:4px;">export.zip / export.xml を選択</div>
         <div>タップしてファイルを選んでください</div>
-        <input type="file" id="xml-input" accept=".zip,.xml,application/zip,text/xml">
+        <input type="file" id="xml-input" accept=".zip,.xml">
       </label>
 
       <div id="import-progress" hidden>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "body-tracker-v2";
+const CACHE_NAME = "body-tracker-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -27,15 +27,17 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+  if (url.origin !== location.origin) return;
+
+  // アプリを積極的に更新中のため、まずネットワークから最新を取りに行き、
+  // オフライン時のみキャッシュにフォールバックする(network-first)。
   e.respondWith(
-    caches.match(e.request).then((cached) => {
-      const fetchPromise = fetch(e.request)
-        .then((res) => {
-          if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(e.request, res.clone()));
-          return res;
-        })
-        .catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(e.request)
+      .then((res) => {
+        if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(e.request, res.clone()));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
