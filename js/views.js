@@ -235,11 +235,17 @@ Views.body = {
 
 // ===================== 食事 =====================
 let dietDate = null;
+let mealFormType = null;
 Views.diet = {
   title: "食事",
   async render(root) {
     if (!dietDate) dietDate = Store.todayStr();
-    const [settings, meals] = await Promise.all([Store.getSettings(), Store.getMealsForDate(dietDate)]);
+    if (!mealFormType) mealFormType = defaultMealTypeForNow();
+    const [settings, meals, activity] = await Promise.all([
+      Store.getSettings(),
+      Store.getMealsForDate(dietDate),
+      Store.getActivityForDate(dietDate),
+    ]);
     const totals = Store.sumMeals(meals);
     const isToday = dietDate === Store.todayStr();
 
@@ -259,6 +265,27 @@ Views.diet = {
         </div>`;
     }
 
+    const mealsByType = {};
+    MEAL_TYPES.forEach((t) => (mealsByType[t.key] = []));
+    meals.forEach((m) => {
+      const t = mealsByType[m.mealType] ? m.mealType : "snack";
+      mealsByType[t].push(m);
+    });
+
+    function mealItemHtml(m) {
+      return `
+        <div class="list-item">
+          <div>
+            <div class="name">${escapeHtml(m.name)}</div>
+            <div class="meta">${m.time || ""} ・ P${n0(m.proteinG)} F${n0(m.fatG)} C${n0(m.carbG)}</div>
+          </div>
+          <div style="display:flex; align-items:center;">
+            <span class="amount">${n0(m.calories)} kcal</span>
+            <button class="del-btn" data-del="${m.id}" aria-label="削除">×</button>
+          </div>
+        </div>`;
+    }
+
     root.innerHTML = `
       <div class="date-nav">
         <button id="prev-date">‹</button>
@@ -273,6 +300,19 @@ Views.diet = {
         ${row("脂質", totals.fatG, settings.targetFatG, "g")}
         ${row("炭水化物", totals.carbG, settings.targetCarbG, "g")}
         ${selectedExtra.map((n) => row(n.label, totals[n.key], settings.extraTargets?.[n.key] ?? n.defaultTarget, n.unit, n.direction)).join("")}
+        <button class="btn" id="suggest-btn" style="margin-top:6px;">不足を補う食品を提案してもらう</button>
+        <div id="suggest-result"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">トレーニング</div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:14px;">
+          <input type="checkbox" id="trained-checkbox" ${activity.trained ? "checked" : ""}>
+          トレーニングした
+        </label>
+        <div class="field" style="margin-top:8px; margin-bottom:0;">
+          <input type="text" id="training-note" placeholder="内容（任意）例: 胸トレ60分" value="${escapeHtml(activity.trainingNote || "")}" ${activity.trained ? "" : "disabled"}>
+        </div>
       </div>
 
       <div class="section-title">写真から記録</div>
@@ -287,7 +327,13 @@ Views.diet = {
       <div class="section-title">記録を追加</div>
       <div class="card">
         <form id="meal-form">
-          <div class="field"><label>食品名</label><input type="text" name="name" placeholder="鶏むね肉 200g" required></div>
+          <div class="field">
+            <label>食事の種類</label>
+            <div class="segmented" id="mealtype-segmented">
+              ${MEAL_TYPES.map((t) => `<button type="button" data-type="${t.key}" class="${t.key === mealFormType ? "active" : ""}">${t.label}</button>`).join("")}
+            </div>
+          </div>
+          <div class="field"><label>食品名</label><input type="text" name="name" placeholder="鶏むね肉 200g / プロテイン" required></div>
           <div class="field-row">
             <div class="field"><label>カロリー (kcal)</label><input type="number" name="calories" step="1" required></div>
             <div class="field"><label>時刻</label><input type="time" name="time" value="${new Date().toTimeString().slice(0, 5)}"></div>
@@ -303,45 +349,46 @@ Views.diet = {
       </div>
 
       <div class="section-title">${escapeHtml(fmtDateShort(dietDate))}の記録</div>
-      <div class="card">
-        ${
-          meals.length === 0
-            ? `<div class="empty-state">まだ記録がありません</div>`
-            : meals
-                .map(
-                  (m) => `
-          <div class="list-item">
-            <div>
-              <div class="name">${escapeHtml(m.name)}</div>
-              <div class="meta">${m.time || ""} ・ P${n0(m.proteinG)} F${n0(m.fatG)} C${n0(m.carbG)}</div>
-            </div>
-            <div style="display:flex; align-items:center;">
-              <span class="amount">${n0(m.calories)} kcal</span>
-              <button class="del-btn" data-del="${m.id}" aria-label="削除">×</button>
-            </div>
-          </div>`
-                )
-                .join("")
-        }
-      </div>
+      ${
+        meals.length === 0
+          ? `<div class="card"><div class="empty-state">まだ記録がありません</div></div>`
+          : MEAL_TYPES.filter((t) => mealsByType[t.key].length > 0)
+              .map(
+                (t) => `
+        <div class="card-title" style="margin-top:14px;">${t.label}</div>
+        <div class="card">${mealsByType[t.key].map(mealItemHtml).join("")}</div>`
+              )
+              .join("")
+      }
     `;
 
     root.querySelector("#prev-date").addEventListener("click", () => {
       dietDate = Store.addDays(dietDate, -1);
+      mealFormType = null;
       Views.diet.render(root);
     });
     const nextBtn = root.querySelector("#next-date");
     if (!isToday) {
       nextBtn.addEventListener("click", () => {
         dietDate = Store.addDays(dietDate, 1);
+        mealFormType = null;
         Views.diet.render(root);
       });
     }
+
+    root.querySelectorAll("#mealtype-segmented button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        mealFormType = btn.dataset.type;
+        root.querySelectorAll("#mealtype-segmented button").forEach((b) => b.classList.toggle("active", b === btn));
+      });
+    });
+
     root.querySelector("#meal-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const meal = {
         date: dietDate,
+        mealType: mealFormType,
         time: fd.get("time") || "",
         name: fd.get("name"),
         calories: parseFloat(fd.get("calories")) || 0,
@@ -353,7 +400,43 @@ Views.diet = {
         meal[n.key] = parseFloat(fd.get(n.key)) || 0;
       });
       await Store.addMeal(meal);
+      mealFormType = null;
       Views.diet.render(root);
+    });
+
+    root.querySelector("#trained-checkbox").addEventListener("change", async (e) => {
+      await Store.upsertActivity(dietDate, { trained: e.target.checked });
+      root.querySelector("#training-note").disabled = !e.target.checked;
+    });
+    root.querySelector("#training-note").addEventListener("change", async (e) => {
+      await Store.upsertActivity(dietDate, { trainingNote: e.target.value });
+    });
+
+    root.querySelector("#suggest-btn").addEventListener("click", async () => {
+      const resultBox = root.querySelector("#suggest-result");
+      const gaps = Store.getDeficiencies(totals, settings);
+      if (gaps.length === 0) {
+        resultBox.innerHTML = `<div class="helptext" style="margin-top:8px;">今のところ大きな不足は無さそうです。</div>`;
+        return;
+      }
+      resultBox.innerHTML = `<div class="helptext" style="margin-top:8px;">AIが提案を考え中...</div>`;
+      try {
+        const suggestions = await Gemini.suggestFoods(gaps, settings.geminiApiKey);
+        resultBox.innerHTML = `
+          <div style="margin-top:10px;">
+            ${suggestions
+              .map(
+                (s) => `
+              <div style="padding:8px 0; border-top:0.5px solid var(--border);">
+                <div style="font-size:14px; font-weight:500;">${escapeHtml(s.food)} <span style="color:var(--text-secondary); font-weight:400;">${escapeHtml(s.amount)}</span></div>
+                <div class="helptext">${escapeHtml(s.reason)}</div>
+              </div>`
+              )
+              .join("")}
+          </div>`;
+      } catch (err) {
+        resultBox.innerHTML = `<div class="helptext" style="margin-top:8px; color:var(--danger);">提案の取得に失敗しました: ${escapeHtml(err.message || String(err))}</div>`;
+      }
     });
 
     root.querySelector("#photo-input").addEventListener("change", async (e) => {

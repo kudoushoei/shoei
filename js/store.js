@@ -11,6 +11,21 @@ const NUTRIENT_CATALOG = [
   { key: "vitaminCMg", label: "ビタミンC", unit: "mg", defaultTarget: 100, direction: "min" },
 ];
 
+const MEAL_TYPES = [
+  { key: "breakfast", label: "朝食" },
+  { key: "lunch", label: "昼食" },
+  { key: "dinner", label: "夕食" },
+  { key: "snack", label: "間食" },
+];
+
+function defaultMealTypeForNow() {
+  const h = new Date().getHours();
+  if (h < 10) return "breakfast";
+  if (h < 15) return "lunch";
+  if (h < 21) return "dinner";
+  return "snack";
+}
+
 // 画面から使う高レベルAPI。日付は常に "YYYY-MM-DD" のローカル日付文字列で扱う。
 const Store = (() => {
   function todayStr() {
@@ -164,6 +179,21 @@ const Store = (() => {
     }, base);
   }
 
+  // 目標に対して不足している項目(タンパク質+選択中のmin方向の栄養素)を返す。AI提案の材料にする。
+  function getDeficiencies(totals, settings) {
+    const gaps = [];
+    if (settings.targetProteinG && totals.proteinG < settings.targetProteinG) {
+      gaps.push({ key: "proteinG", label: "タンパク質", unit: "g", remaining: Math.round(settings.targetProteinG - totals.proteinG) });
+    }
+    NUTRIENT_CATALOG.filter((n) => n.direction === "min" && (settings.selectedNutrients || []).includes(n.key)).forEach((n) => {
+      const target = settings.extraTargets?.[n.key] ?? n.defaultTarget;
+      if (totals[n.key] < target) {
+        gaps.push({ key: n.key, label: n.label, unit: n.unit, remaining: Math.round((target - totals[n.key]) * 10) / 10 });
+      }
+    });
+    return gaps;
+  }
+
   return {
     todayStr,
     toDateStr,
@@ -183,5 +213,6 @@ const Store = (() => {
     deleteMeal,
     getMealsForDate,
     sumMeals,
+    getDeficiencies,
   };
 })();
