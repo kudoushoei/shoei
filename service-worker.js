@@ -1,4 +1,4 @@
-const CACHE_NAME = "body-tracker-v7";
+const CACHE_NAME = "body-tracker-v8";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -9,6 +9,7 @@ const APP_SHELL = [
   "./js/gemini.js",
   "./js/healthImport.js",
   "./js/charts.js",
+  "./js/icons.js",
   "./js/views.js",
   "./js/app.js",
   "./manifest.webmanifest",

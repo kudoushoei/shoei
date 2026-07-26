@@ -71,6 +71,21 @@ Views.dashboard = {
     }
 
     root.innerHTML = `
+      <div class="card card-hero">
+        <div class="card-title">${Icons.sparkle}今日の採点</div>
+        ${
+          dailyScore.hasData
+            ? `
+          <div class="ring-row">
+            <div class="chart-wrap" style="flex-shrink:0;">${Charts.scoreRing(dailyScore.score)}</div>
+            <ul class="ring-reasons">
+              ${dailyScore.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}
+            </ul>
+          </div>`
+            : `<div class="helptext-hero">${escapeHtml(dailyScore.reasons[0])}</div>`
+        }
+      </div>
+
       <div class="card" id="import-jump" style="cursor:pointer;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <span class="card-title" style="margin:0;">ヘルスケアデータ</span>
@@ -80,41 +95,25 @@ Views.dashboard = {
       </div>
 
       <div class="card">
-        <div class="card-title">今日の採点</div>
-        ${
-          dailyScore.hasData
-            ? `
-          <div style="display:flex; align-items:baseline; gap:6px;">
-            <span style="font-size:40px; font-weight:600; color:${dailyScore.score >= 85 ? "var(--accent)" : dailyScore.score >= 60 ? "var(--warning)" : "var(--danger)"};">${dailyScore.score}</span>
-            <span style="font-size:14px; color:var(--text-secondary);">/ 100点</span>
-          </div>
-          <ul style="margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--text-secondary); line-height:1.7;">
-            ${dailyScore.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}
-          </ul>`
-            : `<div class="empty-state">${escapeHtml(dailyScore.reasons[0])}</div>`
-        }
-      </div>
-
-      <div class="card">
-        <div class="card-title">体重</div>
+        <div class="card-title">${iconBadge("scale")}体重</div>
         <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
-          <span style="font-size:30px; font-weight:600;">${latest ? n1(latest.weightKg) : "--"}<span style="font-size:14px;font-weight:400;color:var(--text-secondary)"> kg</span></span>
+          <span style="font-size:32px; font-weight:700; letter-spacing:-0.02em;">${latest ? n1(latest.weightKg) : "--"}<span style="font-size:14px;font-weight:500;color:var(--text-secondary)"> kg</span></span>
           ${deltaHtml}
         </div>
         ${latest ? `<div class="helptext">最終記録: ${escapeHtml(fmtDateShort(latest.date))}</div>` : `<div class="helptext">「取込」からヘルスケアデータを読み込むか、「体組成」タブで手入力できます</div>`}
       </div>
 
       <div class="stat-grid">
-        <div class="stat-tile"><div class="label">歩数</div><div class="value">${n0(todayActivity.steps)}<span class="unit">歩</span></div></div>
-        <div class="stat-tile"><div class="label">消費カロリー</div><div class="value">${n0(todayActivity.activeEnergyKcal)}<span class="unit">kcal</span></div></div>
-        <div class="stat-tile"><div class="label">睡眠</div><div class="value">${n1(todayActivity.sleepHours)}<span class="unit">h</span></div></div>
-        <div class="stat-tile"><div class="label">摂取カロリー</div><div class="value">${n0(totals.calories)}<span class="unit">kcal</span></div></div>
+        <div class="stat-tile">${iconBadge("activity")}<div class="label">歩数</div><div class="value">${n0(todayActivity.steps)}<span class="unit">歩</span></div></div>
+        <div class="stat-tile">${iconBadge("flame", "warning")}<div class="label">消費カロリー</div><div class="value">${n0(todayActivity.activeEnergyKcal)}<span class="unit">kcal</span></div></div>
+        <div class="stat-tile">${iconBadge("moon", "neutral")}<div class="label">睡眠</div><div class="value">${n1(todayActivity.sleepHours)}<span class="unit">h</span></div></div>
+        <div class="stat-tile">${iconBadge("utensils")}<div class="label">摂取カロリー</div><div class="value">${n0(totals.calories)}<span class="unit">kcal</span></div></div>
       </div>
 
       <div class="card">
-        <div class="card-title">カロリー収支（目安）</div>
-        <div style="font-size:26px; font-weight:600; color:${netBalance <= 0 ? "var(--accent)" : "var(--warning)"};">
-          ${netBalance > 0 ? "+" : ""}${n0(netBalance)}<span style="font-size:13px; font-weight:400; color:var(--text-secondary)"> kcal</span>
+        <div class="card-title">${Icons.trend}カロリー収支（目安）</div>
+        <div style="font-size:28px; font-weight:700; letter-spacing:-0.02em; color:${netBalance <= 0 ? "var(--accent)" : "var(--warning)"};">
+          ${netBalance > 0 ? "+" : ""}${n0(netBalance)}<span style="font-size:13px; font-weight:500; color:var(--text-secondary)"> kcal</span>
         </div>
         <div class="helptext">
           摂取 ${n0(totals.calories)} − 消費(活動+基礎代謝) ${n0(burned)} kcal${goalLabel ? `　現在の目標: ${goalLabel}` : ""}
@@ -129,8 +128,8 @@ Views.dashboard = {
       </div>
 
       <div class="section-title">直近7日の活動</div>
-      <div class="card"><div class="card-title">歩数</div><div class="chart-wrap">${Charts.lineChart(stepsSeries, { unit: "歩" })}</div></div>
-      <div class="card"><div class="card-title">睡眠時間</div><div class="chart-wrap">${Charts.lineChart(sleepSeries, { unit: "h" })}</div></div>
+      <div class="card"><div class="card-title">${iconBadge("activity")}歩数</div><div class="chart-wrap">${Charts.lineChart(stepsSeries, { unit: "歩" })}</div></div>
+      <div class="card"><div class="card-title">${iconBadge("moon", "neutral")}睡眠時間</div><div class="chart-wrap">${Charts.lineChart(sleepSeries, { unit: "h" })}</div></div>
     `;
 
     root.querySelector("#diet-jump").addEventListener("click", () => App.showView("diet"));
@@ -311,7 +310,7 @@ Views.diet = {
       </div>
 
       <div class="card">
-        <div class="card-title">摂取まとめ</div>
+        <div class="card-title">${iconBadge("utensils")}摂取まとめ</div>
         ${row("カロリー", totals.calories, settings.targetCalories, "kcal")}
         ${row("タンパク質", totals.proteinG, settings.targetProteinG, "g")}
         ${row("脂質", totals.fatG, settings.targetFatG, "g")}
@@ -322,7 +321,7 @@ Views.diet = {
       </div>
 
       <div class="card">
-        <div class="card-title">トレーニング</div>
+        <div class="card-title">${iconBadge("dumbbell")}トレーニング</div>
         <label style="display:flex; align-items:center; gap:8px; font-size:14px;">
           <input type="checkbox" id="trained-checkbox" ${activity.trained ? "checked" : ""}>
           トレーニングした
@@ -334,8 +333,8 @@ Views.diet = {
 
       <div class="section-title">写真から記録</div>
       <div class="card">
-        <label class="btn btn-primary" style="display:block; text-align:center;">
-          カメラで撮影してAIに解析させる
+        <label class="btn btn-primary" style="display:flex; align-items:center; justify-content:center; gap:8px;">
+          <span style="width:18px; height:18px; display:inline-flex;">${Icons.camera}</span>カメラで撮影してAIに解析させる
           <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;">
         </label>
         <div id="photo-status" class="helptext" style="margin-top:8px; display:none;"></div>
