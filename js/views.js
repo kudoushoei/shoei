@@ -334,8 +334,8 @@ Views.diet = {
       <div class="section-title">写真から記録</div>
       <div class="card">
         <label class="btn btn-primary" style="display:flex; align-items:center; justify-content:center; gap:8px;">
-          <span style="width:18px; height:18px; display:inline-flex;">${Icons.camera}</span>カメラで撮影してAIに解析させる
-          <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;">
+          <span style="width:18px; height:18px; display:inline-flex;">${Icons.camera}</span>写真を撮る/選んでAIに解析させる
+          <input type="file" id="photo-input" accept="image/*" style="display:none;">
         </label>
         <div id="photo-status" class="helptext" style="margin-top:8px; display:none;"></div>
       </div>
