@@ -117,24 +117,32 @@ const Charts = (() => {
    */
   function scoreRing(score, opts = {}) {
     const size = opts.size || 128;
-    const stroke = opts.stroke || 12;
+    const stroke = opts.stroke || 11;
     const r = (size - stroke) / 2;
     const c = size / 2;
     const circumference = 2 * Math.PI * r;
     const pct = Math.max(0, Math.min(100, score)) / 100;
     const dash = circumference * pct;
-    const trackColor = opts.trackColor || "rgba(6,37,28,0.15)";
-    const progressColor = opts.progressColor || "#06251c";
-    const textColor = opts.textColor || "#06251c";
+    const trackColor = opts.trackColor || "rgba(212,175,55,0.16)";
+    const gradFrom = opts.gradFrom || "#d4af37";
+    const gradTo = opts.gradTo || "#f6e2a1";
+    const textColor = opts.textColor || "#f3ead9";
+    const gradId = `ringGrad${Math.round(score)}_${size}`;
 
     return `
 <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="今日の採点 ${score}点">
+  <defs>
+    <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${gradFrom}"/>
+      <stop offset="100%" stop-color="${gradTo}"/>
+    </linearGradient>
+  </defs>
   <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${trackColor}" stroke-width="${stroke}"/>
-  <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${progressColor}" stroke-width="${stroke}"
+  <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="url(#${gradId})" stroke-width="${stroke}"
     stroke-linecap="round" stroke-dasharray="${dash.toFixed(1)} ${circumference.toFixed(1)}"
     transform="rotate(-90 ${c} ${c})"/>
-  <text x="${c}" y="${c - 1}" text-anchor="middle" dominant-baseline="middle" font-size="${Math.round(size * 0.32)}" font-weight="700" fill="${textColor}">${Math.round(score)}</text>
-  <text x="${c}" y="${c + size * 0.19}" text-anchor="middle" font-size="${Math.round(size * 0.09)}" fill="${textColor}" opacity="0.65">/ 100</text>
+  <text x="${c}" y="${c - 1}" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, 'Hiragino Mincho ProN', serif" font-size="${Math.round(size * 0.32)}" font-weight="700" fill="${textColor}">${Math.round(score)}</text>
+  <text x="${c}" y="${c + size * 0.19}" text-anchor="middle" font-size="${Math.round(size * 0.09)}" fill="${gradFrom}" opacity="0.85">/ 100</text>
 </svg>`;
   }
 

@@ -77,7 +77,7 @@ Views.dashboard = {
           dailyScore.hasData
             ? `
           <div class="ring-row">
-            <div class="chart-wrap" style="flex-shrink:0;">${Charts.scoreRing(dailyScore.score)}</div>
+            <div class="ring-gauge">${Charts.scoreRing(dailyScore.score)}</div>
             <ul class="ring-reasons">
               ${dailyScore.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}
             </ul>
