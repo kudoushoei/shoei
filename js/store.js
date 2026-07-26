@@ -194,6 +194,91 @@ const Store = (() => {
     return gaps;
   }
 
+  const STEP_GOAL = 8000;
+  const SLEEP_GOAL_H = 7;
+
+  // 100点満点、減点方式の厳しめ採点。よほど完璧な日でない限り100点にはならない。
+  async function computeDailyScore(date) {
+    const [settings, meals, activity] = await Promise.all([getSettings(), getMealsForDate(date), getActivityForDate(date)]);
+    const totals = sumMeals(meals);
+
+    if (meals.length === 0 && !activity.trained && activity.steps == null) {
+      return { score: null, reasons: ["この日はまだ記録がありません"], hasData: false };
+    }
+
+    let score = 100;
+    const reasons = [];
+
+    function deduct(points, reason) {
+      score -= points;
+      reasons.push(reason);
+    }
+
+    // カロリー (最大15点。目標±3%以内でないと満点にならない)
+    if (settings.targetCalories) {
+      const diffPct = Math.round((Math.abs(totals.calories - settings.targetCalories) / settings.targetCalories) * 100);
+      if (diffPct > 25) deduct(15, `カロリーが目標から${diffPct}%ズレています(${n0v(totals.calories)} / ${n0v(settings.targetCalories)} kcal)`);
+      else if (diffPct > 15) deduct(11, `カロリーが目標から${diffPct}%ズレています`);
+      else if (diffPct > 8) deduct(7, `カロリーが目標から${diffPct}%ズレています`);
+      else if (diffPct > 3) deduct(3, `カロリーが目標から${diffPct}%ズレています`);
+    }
+
+    // タンパク質 (最大15点、目標の98%未満は必ず減点)
+    if (settings.targetProteinG) {
+      const pct = Math.round((totals.proteinG / settings.targetProteinG) * 100);
+      if (pct < 60) deduct(15, `タンパク質が目標の${pct}%しか摂れていません`);
+      else if (pct < 85) deduct(10, `タンパク質が目標の${pct}%にとどまっています`);
+      else if (pct < 98) deduct(4, `タンパク質が目標にわずかに届いていません(${pct}%)`);
+    }
+
+    // 脂質・炭水化物 (最大10点。目標±10%を超えたら減点)
+    let fatCarbDeduction = 0;
+    if (settings.targetFatG) {
+      const diffPct = Math.abs(totals.fatG - settings.targetFatG) / settings.targetFatG;
+      if (diffPct > 0.25) fatCarbDeduction += 5;
+      else if (diffPct > 0.1) fatCarbDeduction += 2;
+    }
+    if (settings.targetCarbG) {
+      const diffPct = Math.abs(totals.carbG - settings.targetCarbG) / settings.targetCarbG;
+      if (diffPct > 0.25) fatCarbDeduction += 5;
+      else if (diffPct > 0.1) fatCarbDeduction += 2;
+    }
+    if (fatCarbDeduction > 0) deduct(fatCarbDeduction, "脂質・炭水化物のバランスが目標からズレています");
+
+    // 選択中の微量栄養素の不足 (1項目につき7点、最大20点)
+    const gaps = getDeficiencies(totals, settings).filter((g) => g.key !== "proteinG");
+    if (gaps.length > 0) {
+      deduct(Math.min(20, gaps.length * 7), `${gaps.map((g) => g.label).join("・")}が不足しています`);
+    }
+
+    // トレーニング (20点)
+    if (!activity.trained) {
+      deduct(20, "トレーニングの記録がありません");
+    }
+
+    // 歩数 (10点、データが無ければ対象外。目標未達なら満点にならない)
+    if (activity.steps != null) {
+      const pct = Math.round((activity.steps / STEP_GOAL) * 100);
+      if (pct < 40) deduct(10, `歩数が少なめです(${n0v(activity.steps)}歩)`);
+      else if (pct < 75) deduct(6, `歩数が目標(${STEP_GOAL.toLocaleString()}歩)にやや届いていません`);
+      else if (pct < 100) deduct(2, `歩数が目標にわずかに届いていません(${n0v(activity.steps)}歩)`);
+    }
+
+    // 睡眠 (10点、データが無ければ対象外。7時間未満は必ず減点)
+    if (activity.sleepHours != null && activity.sleepHours > 0) {
+      if (activity.sleepHours < 5) deduct(10, `睡眠時間が${activity.sleepHours}時間と短めです`);
+      else if (activity.sleepHours < 6) deduct(6, `睡眠時間が不足しています(${activity.sleepHours}時間)`);
+      else if (activity.sleepHours < SLEEP_GOAL_H) deduct(2, `睡眠時間が目標にわずかに届いていません(${activity.sleepHours}時間)`);
+    }
+
+    score = Math.max(0, Math.round(score));
+    if (reasons.length === 0) reasons.push("大きな穴は見当たりません。この調子で");
+    return { score, reasons, hasData: true };
+  }
+  function n0v(v) {
+    return Math.round(v).toLocaleString();
+  }
+
   return {
     todayStr,
     toDateStr,
@@ -214,5 +299,6 @@ const Store = (() => {
     getMealsForDate,
     sumMeals,
     getDeficiencies,
+    computeDailyScore,
   };
 })();

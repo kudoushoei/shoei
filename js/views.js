@@ -23,13 +23,14 @@ function daysSince(isoStr) {
 Views.dashboard = {
   title: "ダッシュボード",
   async render(root) {
-    const [bodyRows, activityRows, latest, settings] = await Promise.all([
+    const today = Store.todayStr();
+    const [bodyRows, activityRows, latest, settings, dailyScore] = await Promise.all([
       Store.getBodyMetricsRange(14),
       Store.getActivityRange(7),
       Store.getLatestBodyMetric(),
       Store.getSettings(),
+      Store.computeDailyScore(today),
     ]);
-    const today = Store.todayStr();
     const todayActivity = activityRows.find((r) => r.date === today) || {};
     const meals = await Store.getMealsForDate(today);
     const totals = Store.sumMeals(meals);
@@ -76,6 +77,22 @@ Views.dashboard = {
           ${importTag}
         </div>
         <div class="helptext">タップして取込画面へ（export.zipをそのまま選べます。展開もPCへの転送も不要です）</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">今日の採点</div>
+        ${
+          dailyScore.hasData
+            ? `
+          <div style="display:flex; align-items:baseline; gap:6px;">
+            <span style="font-size:40px; font-weight:600; color:${dailyScore.score >= 85 ? "var(--accent)" : dailyScore.score >= 60 ? "var(--warning)" : "var(--danger)"};">${dailyScore.score}</span>
+            <span style="font-size:14px; color:var(--text-secondary);">/ 100点</span>
+          </div>
+          <ul style="margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--text-secondary); line-height:1.7;">
+            ${dailyScore.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}
+          </ul>`
+            : `<div class="empty-state">${escapeHtml(dailyScore.reasons[0])}</div>`
+        }
       </div>
 
       <div class="card">
