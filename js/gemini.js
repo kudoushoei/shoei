@@ -134,5 +134,16 @@ const Gemini = (() => {
     return result.suggestions || [];
   }
 
-  return { estimateNutrition, suggestFoods };
+  /**
+   * 食品名(例: "鶏むね肉 200g", "プロテイン")だけから栄養価を推定する。
+   * @param {string} foodName
+   * @param {string} apiKey
+   * @returns {Promise<object>} 推定された栄養素(calories, proteinG, fatG, carbG, foodName等)
+   */
+  async function estimateNutritionFromText(foodName, apiKey) {
+    const prompt = `次の食品/食事の栄養価を推定してください:「${foodName}」。量の指定が無い場合は一般的な1人前として概算してください。数値のみで回答し、分からない項目は0にしてください。foodNameは入力内容をもとにした分かりやすい短い名前にしてください。`;
+    return callGemini([{ text: prompt }], NUTRITION_SCHEMA, apiKey);
+  }
+
+  return { estimateNutrition, estimateNutritionFromText, suggestFoods };
 })();

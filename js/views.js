@@ -350,8 +350,9 @@ Views.diet = {
             </div>
           </div>
           <div class="field"><label>食品名</label><input type="text" name="name" placeholder="鶏むね肉 200g / プロテイン" required></div>
+          <div class="helptext" style="margin-top:-8px; margin-bottom:12px;">カロリー以下を空欄のまま追加すると、AIが食品名から自動で推定します</div>
           <div class="field-row">
-            <div class="field"><label>カロリー (kcal)</label><input type="number" name="calories" step="1" required></div>
+            <div class="field"><label>カロリー (kcal)</label><input type="number" name="calories" step="1"></div>
             <div class="field"><label>時刻</label><input type="time" name="time" value="${new Date().toTimeString().slice(0, 5)}"></div>
           </div>
           <div class="field-row">
@@ -402,18 +403,44 @@ Views.diet = {
     root.querySelector("#meal-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const name = (fd.get("name") || "").trim();
+      const caloriesRaw = fd.get("calories");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      let estimated = null;
+      if (name && !caloriesRaw) {
+        const originalLabel = submitBtn.textContent;
+        submitBtn.disabled = true;
+        submitBtn.textContent = "AIが推定中...";
+        try {
+          estimated = await Gemini.estimateNutritionFromText(name, settings.geminiApiKey);
+        } catch (err) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalLabel;
+          App.toast("AI推定に失敗しました: " + (err.message || String(err)));
+          return;
+        }
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalLabel;
+      }
+
+      function pick(rawVal, estKey) {
+        if (rawVal !== "" && rawVal != null) return parseFloat(rawVal) || 0;
+        return estimated ? Math.round((estimated[estKey] || 0) * 10) / 10 : 0;
+      }
+
       const meal = {
         date: dietDate,
         mealType: mealFormType,
         time: fd.get("time") || "",
-        name: fd.get("name"),
-        calories: parseFloat(fd.get("calories")) || 0,
-        proteinG: parseFloat(fd.get("proteinG")) || 0,
-        fatG: parseFloat(fd.get("fatG")) || 0,
-        carbG: parseFloat(fd.get("carbG")) || 0,
+        name: name,
+        calories: pick(caloriesRaw, "calories"),
+        proteinG: pick(fd.get("proteinG"), "proteinG"),
+        fatG: pick(fd.get("fatG"), "fatG"),
+        carbG: pick(fd.get("carbG"), "carbG"),
       };
       selectedExtra.forEach((n) => {
-        meal[n.key] = parseFloat(fd.get(n.key)) || 0;
+        meal[n.key] = pick(fd.get(n.key), n.key);
       });
       await Store.addMeal(meal);
       mealFormType = null;
