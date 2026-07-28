@@ -24,12 +24,13 @@ Views.dashboard = {
   title: "ダッシュボード",
   async render(root) {
     const today = Store.todayStr();
-    const [bodyRows, activityRows, latest, settings, dailyScore] = await Promise.all([
+    const [bodyRows, activityRows, latest, settings, dailyScore, todayWorkout] = await Promise.all([
       Store.getBodyMetricsRange(14),
       Store.getActivityRange(7),
       Store.getLatestBodyMetric(),
       Store.getSettings(),
       Store.computeDailyScore(today),
+      Store.getWorkoutForDate(today),
     ]);
     const todayActivity = activityRows.find((r) => r.date === today) || {};
     const meals = await Store.getMealsForDate(today);
@@ -56,7 +57,10 @@ Views.dashboard = {
     const calTarget = settings.targetCalories;
     const calPct = calTarget ? Math.min(100, Math.round((totals.calories / calTarget) * 100)) : 0;
 
-    const burned = (todayActivity.activeEnergyKcal || 0) + (todayActivity.basalEnergyKcal || 0);
+    // ヘルスケアの活動カロリーには筋トレ分が含まれていない場合があるため、
+    // 手動記録したワークアウトの推定消費を足して収支を出す
+    const workoutBurn = Store.estimateWorkoutCalories(todayWorkout.entries, latest?.weightKg);
+    const burned = (todayActivity.activeEnergyKcal || 0) + (todayActivity.basalEnergyKcal || 0) + workoutBurn;
     const hasBurnData = todayActivity.activeEnergyKcal != null && todayActivity.activeEnergyKcal > 0;
     const netBalance = totals.calories - burned;
     const goalLabel = { cut: "減量", maintain: "維持", bulk: "増量" }[settings.goalType] || "";
@@ -91,7 +95,7 @@ Views.dashboard = {
           <span class="card-title" style="margin:0;">ヘルスケアデータ</span>
           ${importTag}
         </div>
-        <div class="helptext">タップして取込画面へ（export.zipをそのまま選べます。展開もPCへの転送も不要です）</div>
+        <div class="helptext">タップして設定タブの取込へ（export.zipをそのまま選べます。展開もPCへの転送も不要です）</div>
       </div>
 
       <div class="card">
@@ -100,7 +104,7 @@ Views.dashboard = {
           <span style="font-size:32px; font-weight:700; letter-spacing:-0.02em;">${latest ? n1(latest.weightKg) : "--"}<span style="font-size:14px;font-weight:500;color:var(--text-secondary)"> kg</span></span>
           ${deltaHtml}
         </div>
-        ${latest ? `<div class="helptext">最終記録: ${escapeHtml(fmtDateShort(latest.date))}</div>` : `<div class="helptext">「取込」からヘルスケアデータを読み込むか、「体組成」タブで手入力できます</div>`}
+        ${latest ? `<div class="helptext">最終記録: ${escapeHtml(fmtDateShort(latest.date))}</div>` : `<div class="helptext">設定タブからヘルスケアデータを読み込むか、「体組成」タブで手入力できます</div>`}
       </div>
 
       <div class="stat-grid">
@@ -116,8 +120,8 @@ Views.dashboard = {
           ${netBalance > 0 ? "+" : ""}${n0(netBalance)}<span style="font-size:13px; font-weight:500; color:var(--text-secondary)"> kcal</span>
         </div>
         <div class="helptext">
-          摂取 ${n0(totals.calories)} − 消費(活動+基礎代謝) ${n0(burned)} kcal${goalLabel ? `　現在の目標: ${goalLabel}` : ""}
-          ${hasBurnData ? "" : "<br>※消費データが少ないようです。ヘルスケアから取込むと歩数・消費カロリーが反映されます"}
+          摂取 ${n0(totals.calories)} − 消費 ${n0(burned)} kcal${workoutBurn > 0 ? `（うち筋トレ ${n0(workoutBurn)}）` : ""}${goalLabel ? `　目標: ${goalLabel}` : ""}
+          ${hasBurnData ? "" : "<br>※消費データが少ないようです。設定タブからヘルスケアを取込むと歩数・消費カロリーが反映されます"}
         </div>
       </div>
 
@@ -133,7 +137,7 @@ Views.dashboard = {
     `;
 
     root.querySelector("#diet-jump").addEventListener("click", () => App.showView("diet"));
-    root.querySelector("#import-jump").addEventListener("click", () => App.showView("import"));
+    root.querySelector("#import-jump").addEventListener("click", () => App.showView("settings"));
   },
 };
 
@@ -257,11 +261,7 @@ Views.diet = {
   async render(root) {
     if (!dietDate) dietDate = Store.todayStr();
     if (!mealFormType) mealFormType = defaultMealTypeForNow();
-    const [settings, meals, activity] = await Promise.all([
-      Store.getSettings(),
-      Store.getMealsForDate(dietDate),
-      Store.getActivityForDate(dietDate),
-    ]);
+    const [settings, meals] = await Promise.all([Store.getSettings(), Store.getMealsForDate(dietDate)]);
     const totals = Store.sumMeals(meals);
     const isToday = dietDate === Store.todayStr();
 
@@ -318,17 +318,6 @@ Views.diet = {
         ${selectedExtra.map((n) => row(n.label, totals[n.key], settings.extraTargets?.[n.key] ?? n.defaultTarget, n.unit, n.direction)).join("")}
         <button class="btn" id="suggest-btn" style="margin-top:6px;">不足を補う食品を提案してもらう</button>
         <div id="suggest-result"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">${iconBadge("dumbbell")}トレーニング</div>
-        <label style="display:flex; align-items:center; gap:8px; font-size:14px;">
-          <input type="checkbox" id="trained-checkbox" ${activity.trained ? "checked" : ""}>
-          トレーニングした
-        </label>
-        <div class="field" style="margin-top:8px; margin-bottom:0;">
-          <input type="text" id="training-note" placeholder="内容（任意）例: 胸トレ60分" value="${escapeHtml(activity.trainingNote || "")}" ${activity.trained ? "" : "disabled"}>
-        </div>
       </div>
 
       <div class="section-title">写真から記録</div>
@@ -447,14 +436,6 @@ Views.diet = {
       Views.diet.render(root);
     });
 
-    root.querySelector("#trained-checkbox").addEventListener("change", async (e) => {
-      await Store.upsertActivity(dietDate, { trained: e.target.checked });
-      root.querySelector("#training-note").disabled = !e.target.checked;
-    });
-    root.querySelector("#training-note").addEventListener("change", async (e) => {
-      await Store.upsertActivity(dietDate, { trainingNote: e.target.value });
-    });
-
     root.querySelector("#suggest-btn").addEventListener("click", async () => {
       const resultBox = root.querySelector("#suggest-result");
       const gaps = Store.getDeficiencies(totals, settings);
@@ -515,18 +496,201 @@ Views.diet = {
   },
 };
 
-// ===================== データ取込 =====================
-Views.import = {
-  title: "データ取込",
+// ===================== トレーニング =====================
+let trainingDate = null;
+Views.training = {
+  title: "トレーニング",
   async render(root) {
-    const settings = await Store.getSettings();
-    const lastInfo = settings.lastImportAt
-      ? `<div class="tag">前回: ${new Date(settings.lastImportAt).toLocaleString("ja-JP")}</div>`
-      : "";
+    if (!trainingDate) trainingDate = Store.todayStr();
+    const [settings, workout, latest, recentWorkouts] = await Promise.all([
+      Store.getSettings(),
+      Store.getWorkoutForDate(trainingDate),
+      Store.getLatestBodyMetric(),
+      Store.getWorkoutRange(30),
+    ]);
+    const exercises = Store.getExercises(settings);
+    const isToday = trainingDate === Store.todayStr();
+    const entries = workout.entries || [];
+    const burned = Store.estimateWorkoutCalories(entries, latest?.weightKg);
+    const volume = Store.workoutVolume(entries);
+
+    // 同じ種目の直近の記録を、次回入力時の初期値として使う
+    function lastEntryFor(exerciseId) {
+      for (let i = recentWorkouts.length - 1; i >= 0; i--) {
+        const w = recentWorkouts[i];
+        if (w.date >= trainingDate) continue;
+        const hit = (w.entries || []).find((e) => e.exerciseId === exerciseId);
+        if (hit) return hit;
+      }
+      return null;
+    }
+
+    function optionsHtml(values, selected, suffix) {
+      return values.map((v) => `<option value="${v}" ${v === selected ? "selected" : ""}>${v}${suffix}</option>`).join("");
+    }
+
+    const trainedDays = recentWorkouts.filter((w) => (w.entries || []).length > 0).length;
 
     root.innerHTML = `
+      <div class="date-nav">
+        <button id="prev-date">‹</button>
+        <div class="date-label">${escapeHtml(fmtDateShort(trainingDate))}${isToday ? " ・ 今日" : ""}</div>
+        <button id="next-date" ${isToday ? "disabled style='opacity:.3'" : ""}>›</button>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-tile">${iconBadge("dumbbell")}<div class="label">総ボリューム</div><div class="value">${n0(volume)}<span class="unit">kg</span></div></div>
+        <div class="stat-tile">${iconBadge("flame", "warning")}<div class="label">推定消費</div><div class="value">${n0(burned)}<span class="unit">kcal</span></div></div>
+      </div>
+
       <div class="card">
-        <div class="card-title">iPhoneのヘルスケアデータを取り込む</div>
+        <div class="card-title">${iconBadge("target")}直近30日</div>
+        <div style="font-size:26px; font-weight:700; font-family:var(--font-serif);">${trainedDays}<span style="font-size:13px; font-weight:400; color:var(--text-secondary);"> 日 実施</span></div>
+      </div>
+
+      <div class="section-title">今日のメニュー</div>
+      <div class="card">
+        <form id="workout-form">
+          ${exercises
+            .map((ex) => {
+              const cur = entries.find((e) => e.exerciseId === ex.id);
+              const prev = lastEntryFor(ex.id);
+              const checked = !!cur;
+              const w = cur?.weightKg ?? prev?.weightKg ?? 20;
+              const r = cur?.reps ?? prev?.reps ?? 10;
+              const s = cur?.sets ?? prev?.sets ?? 3;
+              return `
+            <div style="padding:12px 0; border-bottom:0.5px solid var(--border-soft);">
+              <label style="display:flex; align-items:center; gap:9px; font-size:15px; font-weight:500; margin-bottom:8px;">
+                <input type="checkbox" name="do_${ex.id}" ${checked ? "checked" : ""} data-ex="${ex.id}">
+                ${escapeHtml(ex.name)}
+                ${prev && !cur ? `<span class="tag" style="font-weight:400;">前回 ${prev.weightKg}kg</span>` : ""}
+              </label>
+              <div style="display:flex; gap:8px;" data-fields="${ex.id}" ${checked ? "" : 'hidden'}>
+                <select name="w_${ex.id}" style="flex:1; border:0.5px solid var(--border-soft); background:var(--surface-2); border-radius:10px; padding:9px; font-size:15px; color:var(--text);">
+                  ${optionsHtml(WEIGHT_OPTIONS, w, "kg")}
+                </select>
+                <select name="r_${ex.id}" style="flex:1; border:0.5px solid var(--border-soft); background:var(--surface-2); border-radius:10px; padding:9px; font-size:15px; color:var(--text);">
+                  ${optionsHtml(REP_OPTIONS, r, "回")}
+                </select>
+                <select name="s_${ex.id}" style="flex:1; border:0.5px solid var(--border-soft); background:var(--surface-2); border-radius:10px; padding:9px; font-size:15px; color:var(--text);">
+                  ${optionsHtml(SET_OPTIONS, s, "セット")}
+                </select>
+              </div>
+            </div>`;
+            })
+            .join("")}
+          <button class="btn btn-primary" type="submit" style="margin-top:14px;">この日の記録を保存</button>
+        </form>
+        <div class="helptext">重量と回数は5刻み。チェックした種目だけが保存されます。前回の値が自動で入ります。</div>
+      </div>
+
+      <div class="section-title">種目の設定</div>
+      <div class="card">
+        <div class="helptext" style="margin-bottom:10px;">よく行う種目を登録しておくと、毎日はチェックを入れるだけで記録できます。</div>
+        <div id="exercise-list">
+          ${exercises
+            .map(
+              (ex) => `
+          <div class="list-item">
+            <div class="name">${escapeHtml(ex.name)}</div>
+            <button class="del-btn" data-del-ex="${ex.id}" aria-label="削除">×</button>
+          </div>`
+            )
+            .join("")}
+        </div>
+        <form id="add-exercise-form" style="display:flex; gap:8px; margin-top:12px;">
+          <input type="text" name="exName" placeholder="種目を追加" required
+            style="flex:1; border:0.5px solid var(--border-soft); background:var(--surface-2); border-radius:12px; padding:11px 12px; font-size:16px; color:var(--text);">
+          <button class="btn" type="submit" style="width:auto; padding:11px 18px;">追加</button>
+        </form>
+      </div>
+
+      <div class="section-title">最近の記録</div>
+      ${
+        recentWorkouts.filter((w) => (w.entries || []).length > 0).length === 0
+          ? `<div class="card"><div class="empty-state">まだ記録がありません</div></div>`
+          : `<div class="card">${[...recentWorkouts]
+              .reverse()
+              .filter((w) => (w.entries || []).length > 0)
+              .slice(0, 10)
+              .map(
+                (w) => `
+          <div class="list-item">
+            <div>
+              <div class="name">${escapeHtml(fmtDateShort(w.date))}</div>
+              <div class="meta">${w.entries.map((e) => `${escapeHtml(e.name)} ${e.weightKg}kg×${e.reps}×${e.sets}`).join(" ・ ")}</div>
+            </div>
+            <span class="amount">${n0(Store.workoutVolume(w.entries))} kg</span>
+          </div>`
+              )
+              .join("")}</div>`
+      }
+    `;
+
+    root.querySelector("#prev-date").addEventListener("click", () => {
+      trainingDate = Store.addDays(trainingDate, -1);
+      Views.training.render(root);
+    });
+    if (!isToday) {
+      root.querySelector("#next-date").addEventListener("click", () => {
+        trainingDate = Store.addDays(trainingDate, 1);
+        Views.training.render(root);
+      });
+    }
+
+    root.querySelectorAll("[data-ex]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const fields = root.querySelector(`[data-fields="${cb.dataset.ex}"]`);
+        if (fields) fields.hidden = !cb.checked;
+      });
+    });
+
+    root.querySelector("#workout-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const newEntries = exercises
+        .filter((ex) => fd.get(`do_${ex.id}`) != null)
+        .map((ex) => ({
+          exerciseId: ex.id,
+          name: ex.name,
+          weightKg: parseFloat(fd.get(`w_${ex.id}`)) || 0,
+          reps: parseInt(fd.get(`r_${ex.id}`), 10) || 0,
+          sets: parseInt(fd.get(`s_${ex.id}`), 10) || 0,
+        }));
+      await Store.saveWorkout(trainingDate, newEntries);
+      App.toast("保存しました");
+      Views.training.render(root);
+    });
+
+    root.querySelector("#add-exercise-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = (new FormData(e.target).get("exName") || "").trim();
+      if (!name) return;
+      const next = [...exercises, { id: "ex" + Date.now(), name }];
+      await Store.saveExercises(next);
+      Views.training.render(root);
+    });
+
+    root.querySelectorAll("[data-del-ex]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const next = exercises.filter((ex) => ex.id !== btn.dataset.delEx);
+        await Store.saveExercises(next);
+        Views.training.render(root);
+      });
+    });
+  },
+};
+
+// ===================== データ取込(設定タブ内のセクション) =====================
+function importSectionHtml(settings) {
+  const lastInfo = settings.lastImportAt
+    ? `<div class="tag" style="margin-top:10px;">前回: ${new Date(settings.lastImportAt).toLocaleString("ja-JP")}</div>`
+    : "";
+
+  return `
+      <div class="section-title">ヘルスケアデータの取込</div>
+      <div class="card">
         <ol class="helptext" style="padding-left:18px; margin:0;">
           <li>iPhoneで「ヘルスケア」アプリを開く</li>
           <li>右上のプロフィールアイコンをタップ</li>
@@ -552,8 +716,10 @@ Views.import = {
 
       ${lastInfo}
     `;
+}
 
-    root.querySelector("#xml-input").addEventListener("change", async (e) => {
+function bindImportHandlers(root) {
+  root.querySelector("#xml-input").addEventListener("change", async (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const progressWrap = root.querySelector("#import-progress");
@@ -592,8 +758,7 @@ Views.import = {
         resultBox.innerHTML = `<div class="card"><div class="card-title" style="color:var(--danger)">読み込みに失敗しました</div><div class="helptext">${escapeHtml(err.message || String(err))}</div></div>`;
       }
     });
-  },
-};
+}
 
 // ===================== 設定 =====================
 Views.settings = {
@@ -710,6 +875,8 @@ Views.settings = {
         </form>
       </div>
 
+      ${importSectionHtml(settings)}
+
       <div class="section-title">データ管理</div>
       <div class="card">
         <button class="btn" id="export-btn" style="margin-bottom:10px;">バックアップを書き出す (JSON)</button>
@@ -720,6 +887,8 @@ Views.settings = {
         <button class="btn btn-danger" id="wipe-btn">全データを削除</button>
       </div>
     `;
+
+    bindImportHandlers(root);
 
     root.querySelector("#profile-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -784,7 +953,7 @@ Views.settings = {
 
     root.querySelector("#export-btn").addEventListener("click", async () => {
       const dump = {};
-      for (const store of ["bodyMetrics", "activity", "meals", "settings"]) {
+      for (const store of ["bodyMetrics", "activity", "meals", "workouts", "settings"]) {
         dump[store] = await DB.getAll(store);
       }
       const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
@@ -800,7 +969,7 @@ Views.settings = {
       if (!file) return;
       try {
         const data = JSON.parse(await file.text());
-        for (const store of ["bodyMetrics", "activity", "meals", "settings"]) {
+        for (const store of ["bodyMetrics", "activity", "meals", "workouts", "settings"]) {
           if (Array.isArray(data[store]) && data[store].length) await DB.putMany(store, data[store]);
         }
         App.toast("復元しました");
@@ -812,7 +981,7 @@ Views.settings = {
 
     root.querySelector("#wipe-btn").addEventListener("click", async () => {
       if (!confirm("すべてのデータを削除します。よろしいですか？")) return;
-      for (const store of ["bodyMetrics", "activity", "meals", "settings"]) await DB.clear(store);
+      for (const store of ["bodyMetrics", "activity", "meals", "workouts", "settings"]) await DB.clear(store);
       App.toast("削除しました");
       Views.settings.render(root);
     });

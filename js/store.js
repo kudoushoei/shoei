@@ -26,6 +26,20 @@ function defaultMealTypeForNow() {
   return "snack";
 }
 
+// 種目を初めて設定するときの候補。設定画面で自由に追加・削除できる。
+const DEFAULT_EXERCISES = [
+  { id: "bench", name: "ベンチプレス" },
+  { id: "squat", name: "スクワット" },
+  { id: "deadlift", name: "デッドリフト" },
+  { id: "shoulderPress", name: "ショルダープレス" },
+  { id: "latPulldown", name: "ラットプルダウン" },
+];
+
+// 入力を楽にするための選択肢。重量・回数は5刻み、セット数は1刻み。
+const WEIGHT_OPTIONS = Array.from({ length: 41 }, (_, i) => i * 5); // 0〜200kg
+const REP_OPTIONS = Array.from({ length: 12 }, (_, i) => (i + 1) * 5); // 5〜60回
+const SET_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1); // 1〜10セット
+
 // 画面から使う高レベルAPI。日付は常に "YYYY-MM-DD" のローカル日付文字列で扱う。
 const Store = (() => {
   function todayStr() {
@@ -64,6 +78,7 @@ const Store = (() => {
     geminiApiKey: "",
     selectedNutrients: [],
     extraTargets: {},
+    exercises: null, // nullなら未設定。DEFAULT_EXERCISESを初期値として提示する
   };
 
   async function getSettings() {
@@ -150,6 +165,41 @@ const Store = (() => {
   }
   async function getActivityForDate(date) {
     return (await DB.get("activity", date)) || { date };
+  }
+
+  // ---- workouts (筋トレ) ----
+  function getExercises(settings) {
+    return settings.exercises && settings.exercises.length ? settings.exercises : DEFAULT_EXERCISES;
+  }
+  async function saveExercises(exercises) {
+    await saveSettings({ exercises });
+  }
+  async function getWorkoutForDate(date) {
+    return (await DB.get("workouts", date)) || { date, entries: [] };
+  }
+  async function saveWorkout(date, entries) {
+    await DB.put("workouts", { date, entries });
+    // 採点で使う activity.trained を、その日の記録有無に合わせて同期する
+    await upsertActivity(date, { trained: entries.length > 0 });
+  }
+  async function getWorkoutRange(days) {
+    const dates = new Set(lastNDates(days));
+    const all = await DB.getAll("workouts");
+    return all.filter((r) => dates.has(r.date)).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
+  // 筋トレの消費カロリー概算。
+  // ACSMのMET式 kcal/分 = MET × 3.5 × 体重kg / 200 をベースに、
+  // 1セットあたり休憩込みで約2.5分・実効MET5.0(中〜高強度の筋トレ)として見積もる。
+  function estimateWorkoutCalories(entries, bodyWeightKg) {
+    const weight = bodyWeightKg || 65;
+    const totalSets = (entries || []).reduce((sum, e) => sum + (Number(e.sets) || 0), 0);
+    const kcalPerMin = (5.0 * 3.5 * weight) / 200;
+    return Math.round(totalSets * 2.5 * kcalPerMin);
+  }
+
+  function workoutVolume(entries) {
+    return (entries || []).reduce((sum, e) => sum + (Number(e.weightKg) || 0) * (Number(e.reps) || 0) * (Number(e.sets) || 0), 0);
   }
 
   // ---- meals ----
@@ -253,7 +303,7 @@ const Store = (() => {
 
     // トレーニング (20点)
     if (!activity.trained) {
-      deduct(20, "トレーニングの記録がありません");
+      deduct(20, "筋トレの記録がありません（筋トレタブから記録できます）");
     }
 
     // 歩数 (10点、データが無ければ対象外。目標未達なら満点にならない)
@@ -294,6 +344,13 @@ const Store = (() => {
     upsertActivity,
     getActivityRange,
     getActivityForDate,
+    getExercises,
+    saveExercises,
+    getWorkoutForDate,
+    saveWorkout,
+    getWorkoutRange,
+    estimateWorkoutCalories,
+    workoutVolume,
     addMeal,
     deleteMeal,
     getMealsForDate,

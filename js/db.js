@@ -1,7 +1,7 @@
 // IndexedDB のごく薄いラッパー。ビルド不要で動かすため外部ライブラリは使わない。
 const DB = (() => {
   const DB_NAME = "bodyTrackerDB";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   let dbPromise = null;
 
   function open() {
@@ -22,6 +22,10 @@ const DB = (() => {
         }
         if (!db.objectStoreNames.contains("settings")) {
           db.createObjectStore("settings", { keyPath: "key" });
+        }
+        // v2: 筋トレの記録。1日1レコードで、その日に行った種目の配列を持つ
+        if (!db.objectStoreNames.contains("workouts")) {
+          db.createObjectStore("workouts", { keyPath: "date" });
         }
       };
       req.onsuccess = (e) => resolve(e.target.result);
