@@ -36,8 +36,8 @@ const DEFAULT_EXERCISES = [
 ];
 
 // 入力を楽にするための選択肢。重量・回数は5刻み、セット数は1刻み。
-const WEIGHT_OPTIONS = Array.from({ length: 41 }, (_, i) => i * 5); // 0〜200kg
-const REP_OPTIONS = Array.from({ length: 12 }, (_, i) => (i + 1) * 5); // 5〜60回
+const WEIGHT_OPTIONS = Array.from({ length: 201 }, (_, i) => i); // 0〜200kg
+const REP_OPTIONS = Array.from({ length: 50 }, (_, i) => i + 1); // 1〜50回
 const SET_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1); // 1〜10セット
 
 // 画面から使う高レベルAPI。日付は常に "YYYY-MM-DD" のローカル日付文字列で扱う。

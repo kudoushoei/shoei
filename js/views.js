@@ -54,6 +54,13 @@ Views.dashboard = {
       value: activityRows.find((r) => r.date === d)?.sleepHours ?? null,
     }));
 
+    const scoreDates = Store.lastNDates(14);
+    const scoreHistory = await Promise.all(scoreDates.map((d) => Store.computeDailyScore(d)));
+    const scoreSeries = scoreDates.map((d, i) => ({
+      label: fmtDateShort(d),
+      value: scoreHistory[i].hasData ? scoreHistory[i].score : null,
+    }));
+
     const calTarget = settings.targetCalories;
     const calPct = calTarget ? Math.min(100, Math.round((totals.calories / calTarget) * 100)) : 0;
 
@@ -130,6 +137,9 @@ Views.dashboard = {
         <div class="progress-bar ${calPct >= 100 && totals.calories > calTarget ? "over" : ""}"><div style="width:${calPct}%"></div></div>
         <div class="helptext">P ${n0(totals.proteinG)}g ・ F ${n0(totals.fatG)}g ・ C ${n0(totals.carbG)}g　タップして記録する</div>
       </div>
+
+      <div class="section-title">採点の推移</div>
+      <div class="card"><div class="card-title">${Icons.sparkle}直近14日</div><div class="chart-wrap">${Charts.lineChart(scoreSeries, { unit: "点" })}</div></div>
 
       <div class="section-title">直近7日の活動</div>
       <div class="card"><div class="card-title">${iconBadge("activity")}歩数</div><div class="chart-wrap">${Charts.lineChart(stepsSeries, { unit: "歩" })}</div></div>
